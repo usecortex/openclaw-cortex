@@ -1,6 +1,6 @@
 # Cortex AI — OpenClaw Plugin
 
-Long-term memory for OpenClaw powered by [Cortex AI](https://usecortex.ai). Automatically captures conversations, recalls relevant context with knowledge-graph connections, and injects them before every AI turn.
+State-of-the-art agentic memory for OpenClaw powered by [Cortex AI](https://usecortex.ai). Automatically captures conversations, recalls relevant context with knowledge-graph connections, and injects them before every AI turn.
 
 ## Install
 
@@ -69,7 +69,7 @@ Or configure directly in `openclaw.json`:
 
 | Tool             | Description                                               |
 | ---------------- | --------------------------------------------------------- |
-| `cortex_store`   | Save information to long-term memory                      |
+| `cortex_store`   | Save information to memory                                |
 | `cortex_search`  | Search memories with graph-enriched results               |
 
 ## CLI
