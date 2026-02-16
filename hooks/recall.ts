@@ -1,0 +1,40 @@
+import type { CortexClient } from "../client.ts"
+import type { CortexPluginConfig } from "../config.ts"
+import { buildRecalledContext, envelopeForInjection } from "../context.ts"
+import { log } from "../log.ts"
+
+export function createRecallHook(
+	client: CortexClient,
+	cfg: CortexPluginConfig,
+) {
+	return async (event: Record<string, unknown>) => {
+		const prompt = event.prompt as string | undefined
+		if (!prompt || prompt.length < 5) return
+
+		log.debug(`recall query (${prompt.length} chars)`)
+
+		try {
+			const response = await client.recall(prompt, {
+				maxResults: cfg.maxRecallResults,
+				mode: cfg.recallMode,
+				graphContext: cfg.graphContext,
+			})
+
+			if (!response.chunks || response.chunks.length === 0) {
+				log.debug("no memories matched")
+				return
+			}
+
+			const body = buildRecalledContext(response)
+			if (!body.trim()) return
+
+			const envelope = envelopeForInjection(body)
+
+			log.debug(`injecting ${response.chunks.length} chunks (${envelope.length} chars)`)
+			return { prependContext: envelope }
+		} catch (err) {
+			log.error("recall failed", err)
+			return
+		}
+	}
+}

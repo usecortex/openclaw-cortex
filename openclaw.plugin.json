@@ -1,0 +1,68 @@
+{
+	"id": "openclaw-cortex-ai",
+	"kind": "memory",
+	"uiHints": {
+		"apiKey": {
+			"label": "Cortex API Key",
+			"sensitive": true,
+			"placeholder": "your-cortex-api-key",
+			"help": "Your API key from Cortex (or use ${CORTEX_OPENCLAW_API_KEY})"
+		},
+		"tenantId": {
+			"label": "Tenant ID",
+			"placeholder": "tenant-01",
+			"help": "Your Cortex tenant identifier (or use ${CORTEX_OPENCLAW_TENANT_ID})"
+		},
+		"subTenantId": {
+			"label": "Sub-Tenant ID",
+			"placeholder": "cortex-openclaw",
+			"help": "Sub-tenant for data partitioning (default: cortex-openclaw)",
+			"advanced": true
+		},
+		"autoRecall": {
+			"label": "Auto-Recall",
+			"help": "Inject relevant memories before every AI turn (default: true)"
+		},
+		"autoCapture": {
+			"label": "Auto-Capture",
+			"help": "Automatically store conversation exchanges after every AI turn (default: true)"
+		},
+		"maxRecallResults": {
+			"label": "Max Recall Results",
+			"placeholder": "10",
+			"help": "Maximum memory chunks injected into context per turn",
+			"advanced": true
+		},
+		"recallMode": {
+			"label": "Recall Mode",
+			"help": "'fast' (default) or 'thinking' (personalised recall with deeper graph traversal)",
+			"advanced": true
+		},
+		"graphContext": {
+			"label": "Graph Context",
+			"help": "Include knowledge graph relations in recalled context (default: true)",
+			"advanced": true
+		},
+		"debug": {
+			"label": "Debug Logging",
+			"help": "Enable verbose debug logs for API calls and responses",
+			"advanced": true
+		}
+	},
+	"configSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"apiKey": { "type": "string" },
+			"tenantId": { "type": "string" },
+			"subTenantId": { "type": "string" },
+			"autoRecall": { "type": "boolean" },
+			"autoCapture": { "type": "boolean" },
+			"maxRecallResults": { "type": "number", "minimum": 1, "maximum": 50 },
+			"recallMode": { "type": "string", "enum": ["fast", "thinking"] },
+			"graphContext": { "type": "boolean" },
+			"debug": { "type": "boolean" }
+		},
+		"required": []
+	}
+}

@@ -1,0 +1,138 @@
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
+import type { CortexClient } from "../client.ts"
+import type { CortexPluginConfig } from "../config.ts"
+import { log } from "../log.ts"
+import { toSourceId } from "../session.ts"
+
+function preview(text: string, max = 80): string {
+	return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
+export function registerSlashCommands(
+	api: OpenClawPluginApi,
+	client: CortexClient,
+	cfg: CortexPluginConfig,
+	getSessionKey: () => string | undefined,
+): void {
+	api.registerCommand({
+		name: "cortex-remember",
+		description: "Save a piece of information to Cortex memory",
+		acceptsArgs: true,
+		requireAuth: true,
+		handler: async (ctx: { args?: string }) => {
+			const text = ctx.args?.trim()
+			if (!text) return { text: "Usage: /cortex-remember <text to store>" }
+
+			try {
+				const sk = getSessionKey()
+				const sourceId = sk ? toSourceId(sk) : undefined
+				await client.ingestText(text, { sourceId, title: "Manual Memory", infer: true })
+				return { text: `Saved: "${preview(text, 60)}"` }
+			} catch (err) {
+				log.error("/cortex-remember", err)
+				return { text: "Failed to save. Check logs." }
+			}
+		},
+	})
+
+	api.registerCommand({
+		name: "cortex-recall",
+		description: "Search your Cortex memories",
+		acceptsArgs: true,
+		requireAuth: true,
+		handler: async (ctx: { args?: string }) => {
+			const query = ctx.args?.trim()
+			if (!query) return { text: "Usage: /cortex-recall <query>" }
+
+			try {
+				const res = await client.recall(query, {
+					maxResults: cfg.maxRecallResults,
+					mode: cfg.recallMode,
+					graphContext: cfg.graphContext,
+				})
+
+				if (!res.chunks || res.chunks.length === 0) {
+					return { text: `No memories found for "${query}"` }
+				}
+
+				const lines = res.chunks.slice(0, 10).map((c, i) => {
+					const score = c.relevancy_score != null ? ` (${Math.round(c.relevancy_score * 100)}%)` : ""
+					const title = c.source_title ? ` [${c.source_title}]` : ""
+					return `${i + 1}.${title} ${preview(c.chunk_content, 120)}${score}`
+				})
+
+				return { text: `Found ${res.chunks.length} chunks:\n\n${lines.join("\n")}` }
+			} catch (err) {
+				log.error("/cortex-recall", err)
+				return { text: "Recall failed. Check logs." }
+			}
+		},
+	})
+
+	api.registerCommand({
+		name: "cortex-list",
+		description: "List all stored user memories",
+		acceptsArgs: false,
+		requireAuth: true,
+		handler: async () => {
+			try {
+				const res = await client.listMemories()
+				const memories = res.user_memories ?? []
+				if (memories.length === 0) return { text: "No memories stored yet." }
+
+				const lines = memories.map(
+					(m, i) => `${i + 1}. [${m.memory_id}] ${preview(m.memory_content, 100)}`,
+				)
+				return { text: `${memories.length} memories:\n\n${lines.join("\n")}` }
+			} catch (err) {
+				log.error("/cortex-list", err)
+				return { text: "Failed to list memories. Check logs." }
+			}
+		},
+	})
+
+	api.registerCommand({
+		name: "cortex-delete",
+		description: "Delete a specific memory by its ID",
+		acceptsArgs: true,
+		requireAuth: true,
+		handler: async (ctx: { args?: string }) => {
+			const memoryId = ctx.args?.trim()
+			if (!memoryId) return { text: "Usage: /cortex-delete <memory_id>" }
+
+			try {
+				const res = await client.deleteMemory(memoryId)
+				if (res.user_memory_deleted) {
+					return { text: `Deleted memory: ${memoryId}` }
+				}
+				return { text: `Memory ${memoryId} was not found or already deleted.` }
+			} catch (err) {
+				log.error("/cortex-delete", err)
+				return { text: "Delete failed. Check logs." }
+			}
+		},
+	})
+
+	api.registerCommand({
+		name: "cortex-get",
+		description: "Fetch the content of a specific source by its ID",
+		acceptsArgs: true,
+		requireAuth: true,
+		handler: async (ctx: { args?: string }) => {
+			const sourceId = ctx.args?.trim()
+			if (!sourceId) return { text: "Usage: /cortex-get <source_id>" }
+
+			try {
+				const res = await client.fetchContent(sourceId)
+				if (!res.success || res.error) {
+					return { text: `Could not fetch source ${sourceId}: ${res.error ?? "unknown error"}` }
+				}
+				const content = res.content ?? res.content_base64 ?? "(no text content)"
+				return { text: `Source: ${sourceId}\n\n${preview(content, 2000)}` }
+			} catch (err) {
+				log.error("/cortex-get", err)
+				return { text: "Fetch failed. Check logs." }
+			}
+		},
+	})
+}
