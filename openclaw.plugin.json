@@ -43,6 +43,11 @@
 			"help": "Include knowledge graph relations in recalled context (default: true)",
 			"advanced": true
 		},
+		"ignoreTerm": {
+			"label": "Ignore Term",
+			"placeholder": "cortex-ignore",
+			"help": "Messages containing this term will be excluded from recall and capture (default: cortex-ignore)"
+		},
 		"debug": {
 			"label": "Debug Logging",
 			"help": "Enable verbose debug logs for API calls and responses",
@@ -61,6 +66,7 @@
 			"maxRecallResults": { "type": "number", "minimum": 1, "maximum": 50 },
 			"recallMode": { "type": "string", "enum": ["fast", "thinking"] },
 			"graphContext": { "type": "boolean" },
+			"ignoreTerm": { "type": "string" },
 			"debug": { "type": "boolean" }
 		},
 		"required": []

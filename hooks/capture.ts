@@ -1,7 +1,7 @@
 import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { log } from "../log.ts"
-import { extractAllTurns } from "../messages.ts"
+import { extractAllTurns, filterIgnoredTurns } from "../messages.ts"
 import { toHookSourceId } from "../session.ts"
 import type { ConversationTurn } from "../types/cortex.ts"
 
@@ -13,7 +13,7 @@ function removeInjectedBlocks(text: string): string {
 
 export function createIngestionHook(
 	client: CortexClient,
-	_cfg: CortexPluginConfig,
+	cfg: CortexPluginConfig,
 ) {
 	return async (event: Record<string, unknown>, sessionId: string | undefined) => {
 		try {
@@ -33,7 +33,12 @@ export function createIngestionHook(
 				return
 			}
 
-			const allTurns = extractAllTurns(event.messages)
+			const rawTurns = extractAllTurns(event.messages)
+			const allTurns = filterIgnoredTurns(rawTurns, cfg.ignoreTerm)
+
+			if (rawTurns.length > 0 && allTurns.length < rawTurns.length) {
+				log.debug(`[capture] filtered ${rawTurns.length - allTurns.length} turns containing ignore term "${cfg.ignoreTerm}"`)
+			}
 
 			if (allTurns.length === 0) {
 				log.debug(`[capture] skipped — no user-assistant turns found in ${event.messages.length} messages`)

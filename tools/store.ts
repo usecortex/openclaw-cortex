@@ -3,7 +3,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
 import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { log } from "../log.ts"
-import { extractAllTurns } from "../messages.ts"
+import { extractAllTurns, filterIgnoredTurns } from "../messages.ts"
 import { toToolSourceId } from "../session.ts"
 import type { ConversationTurn } from "../types/cortex.ts"
 
@@ -16,7 +16,7 @@ function removeInjectedBlocks(text: string): string {
 export function registerStoreTool(
 	api: OpenClawPluginApi,
 	client: CortexClient,
-	_cfg: CortexPluginConfig,
+	cfg: CortexPluginConfig,
 	getSessionId: () => string | undefined,
 	getMessages: () => unknown[],
 ): void {
@@ -46,14 +46,15 @@ export function registerStoreTool(
 
 				log.debug(`[store] tool called — sid=${sid ?? "none"} msgs=${messages.length} text="${params.text.slice(0, 50)}"`)
 
-				const allTurns = extractAllTurns(messages)
-				const recentTurns = allTurns.slice(-MAX_STORE_TURNS)
+				const rawTurns = extractAllTurns(messages)
+				const filteredTurns = filterIgnoredTurns(rawTurns, cfg.ignoreTerm)
+				const recentTurns = filteredTurns.slice(-MAX_STORE_TURNS)
 				const turns: ConversationTurn[] = recentTurns.map((t) => ({
 					user: removeInjectedBlocks(t.user),
 					assistant: removeInjectedBlocks(t.assistant),
 				}))
 
-				log.debug(`[store] extracted ${allTurns.length} total turns, using last ${turns.length} (MAX_STORE_TURNS=${MAX_STORE_TURNS})`)
+				log.debug(`[store] extracted ${rawTurns.length} total turns, ${rawTurns.length - filteredTurns.length} ignored, using last ${turns.length} (MAX_STORE_TURNS=${MAX_STORE_TURNS})`)
 
 				if (turns.length > 0 && sourceId) {
 					const now = new Date()

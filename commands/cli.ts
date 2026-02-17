@@ -6,6 +6,7 @@ export function registerCliCommands(
 	api: OpenClawPluginApi,
 	client: CortexClient,
 	cfg: CortexPluginConfig,
+	onboardingRegistrar?: (root: any) => void,
 ): void {
 	api.registerCli(
 		({ program }: { program: any }) => {
@@ -86,7 +87,10 @@ export function registerCliCommands(
 					console.log(`Recall Mode:  ${cfg.recallMode}`)
 					console.log(`Graph:        ${cfg.graphContext}`)
 					console.log(`Max Results:  ${cfg.maxRecallResults}`)
+					console.log(`Ignore Term:  ${cfg.ignoreTerm}`)
 				})
+
+			if (onboardingRegistrar) onboardingRegistrar(root)
 		},
 		{ commands: ["cortex"] },
 	)

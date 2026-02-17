@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
 import { CortexClient } from "./client.ts"
 import { registerCliCommands } from "./commands/cli.ts"
+import { registerOnboardingCli, registerOnboardingSlashCommands } from "./commands/onboarding.ts"
 import { registerSlashCommands } from "./commands/slash.ts"
 import { cortexConfigSchema, parseConfig } from "./config.ts"
 import { createIngestionHook } from "./hooks/capture.ts"
@@ -65,7 +66,8 @@ export default {
 		}
 
 		registerSlashCommands(api, client, cfg, getSessionId)
-		registerCliCommands(api, client, cfg)
+		registerOnboardingSlashCommands(api, client, cfg)
+		registerCliCommands(api, client, cfg, registerOnboardingCli(cfg))
 
 		api.registerService({
 			id: "openclaw-cortex-ai",
