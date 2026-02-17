@@ -18,7 +18,9 @@ const API_BASE = "https://api.usecortex.ai"
 const INGEST_INSTRUCTIONS =
 	"Focus on extracting user preferences, habits, opinions, likes, dislikes, " +
 	"goals, and recurring themes. Capture any stated or implied personal context " +
-	"that would help personalise future interactions."
+	"that would help personalise future interactions. Capture important personal details like " +
+	"name, age, email ids, phone numbers, etc. along with the original name and context " +
+	"so that it can be used to personalise future interactions."
 
 export class CortexClient {
 	private apiKey: string
