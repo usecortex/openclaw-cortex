@@ -28,10 +28,12 @@ export default {
 		const client = new CortexClient(cfg.apiKey, cfg.tenantId, cfg.subTenantId)
 
 		let activeSessionId: string | undefined
+		let conversationMessages: unknown[] = []
 		const getSessionId = () => activeSessionId
+		const getMessages = () => conversationMessages
 
 		registerSearchTool(api, client, cfg)
-		registerStoreTool(api, client, cfg, getSessionId)
+		registerStoreTool(api, client, cfg, getSessionId, getMessages)
 		registerListTool(api, client, cfg)
 		registerDeleteTool(api, client, cfg)
 		registerGetTool(api, client, cfg)
@@ -42,17 +44,21 @@ export default {
 				"before_agent_start",
 				(event: Record<string, unknown>, ctx: Record<string, unknown>) => {
 					if (ctx.sessionId) activeSessionId = ctx.sessionId as string
+					if (Array.isArray(event.messages)) conversationMessages = event.messages
+					log.debug(`[session] before_agent_start — sid=${activeSessionId ?? "none"} msgs=${conversationMessages.length}`)
 					return onRecall(event)
 				},
 			)
 		}
 
 		if (cfg.autoCapture) {
+			const captureHandler = createIngestionHook(client, cfg)
 			api.on(
 				"agent_end",
 				(event: Record<string, unknown>, ctx: Record<string, unknown>) => {
 					if (ctx.sessionId) activeSessionId = ctx.sessionId as string
-					return createIngestionHook(client, cfg, getSessionId)(event)
+					log.debug(`[session] agent_end — sid=${activeSessionId ?? "none"} ctxKeys=${Object.keys(ctx).join(",")}`)
+					return captureHandler(event, activeSessionId)
 				},
 			)
 		}

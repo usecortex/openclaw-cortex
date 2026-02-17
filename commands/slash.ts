@@ -2,7 +2,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
 import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { log } from "../log.ts"
-import { toSourceId } from "../session.ts"
+import { toToolSourceId } from "../session.ts"
 
 function preview(text: string, max = 80): string {
 	return text.length > max ? `${text.slice(0, max)}…` : text
@@ -25,7 +25,7 @@ export function registerSlashCommands(
 
 			try {
 				const sid = getSessionId()
-				const sourceId = sid ? toSourceId(sid) : undefined
+				const sourceId = sid ? toToolSourceId(sid) : undefined
 				await client.ingestText(text, { sourceId, title: "Manual Memory", infer: true })
 				return { text: `Saved: "${preview(text, 60)}"` }
 			} catch (err) {
