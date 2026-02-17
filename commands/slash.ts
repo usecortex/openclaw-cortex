@@ -12,7 +12,7 @@ export function registerSlashCommands(
 	api: OpenClawPluginApi,
 	client: CortexClient,
 	cfg: CortexPluginConfig,
-	getSessionKey: () => string | undefined,
+	getSessionId: () => string | undefined,
 ): void {
 	api.registerCommand({
 		name: "cortex-remember",
@@ -24,8 +24,8 @@ export function registerSlashCommands(
 			if (!text) return { text: "Usage: /cortex-remember <text to store>" }
 
 			try {
-				const sk = getSessionKey()
-				const sourceId = sk ? toSourceId(sk) : undefined
+				const sid = getSessionId()
+				const sourceId = sid ? toSourceId(sid) : undefined
 				await client.ingestText(text, { sourceId, title: "Manual Memory", infer: true })
 				return { text: `Saved: "${preview(text, 60)}"` }
 			} catch (err) {

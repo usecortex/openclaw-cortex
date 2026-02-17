@@ -1,3 +1,3 @@
-export function toSourceId(sessionKey: string): string {
-	return `openclaw_cortex_sess_${sessionKey.replace(/\W+/g, "_")}`
+export function toSourceId(sessionId: string): string {
+	return `openclaw_cortex_sess_${sessionId}`
 }

@@ -9,7 +9,7 @@ export function registerStoreTool(
 	api: OpenClawPluginApi,
 	client: CortexClient,
 	_cfg: CortexPluginConfig,
-	getSessionKey: () => string | undefined,
+	getSessionId: () => string | undefined,
 ): void {
 	api.registerTool(
 		{
@@ -31,8 +31,8 @@ export function registerStoreTool(
 				_toolCallId: string,
 				params: { text: string; title?: string },
 			) {
-				const sk = getSessionKey()
-				const sourceId = sk ? toSourceId(sk) : undefined
+				const sid = getSessionId()
+				const sourceId = sid ? toSourceId(sid) : undefined
 
 				log.debug(`store tool: "${params.text.slice(0, 50)}" - \nsourceId: ${sourceId}`)
 

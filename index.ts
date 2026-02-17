@@ -24,28 +24,34 @@ export default {
 
 		const client = new CortexClient(cfg.apiKey, cfg.tenantId, cfg.subTenantId)
 
-		let activeSessionKey: string | undefined
-		const getSessionKey = () => activeSessionKey
+		let activeSessionId: string | undefined
+		const getSessionId = () => activeSessionId
 
 		registerSearchTool(api, client, cfg)
-		registerStoreTool(api, client, cfg, getSessionKey)
+		registerStoreTool(api, client, cfg, getSessionId)
 
 		if (cfg.autoRecall) {
 			const onRecall = createRecallHook(client, cfg)
 			api.on(
 				"before_agent_start",
 				(event: Record<string, unknown>, ctx: Record<string, unknown>) => {
-					if (ctx.sessionKey) activeSessionKey = ctx.sessionKey as string
+					if (ctx.sessionId) activeSessionId = ctx.sessionId as string
 					return onRecall(event)
 				},
 			)
 		}
 
 		if (cfg.autoCapture) {
-			api.on("agent_end", createIngestionHook(client, cfg, getSessionKey))
+			api.on(
+				"agent_end",
+				(event: Record<string, unknown>, ctx: Record<string, unknown>) => {
+					if (ctx.sessionId) activeSessionId = ctx.sessionId as string
+					return createIngestionHook(client, cfg, getSessionId)(event)
+				},
+			)
 		}
 
-		registerSlashCommands(api, client, cfg, getSessionKey)
+		registerSlashCommands(api, client, cfg, getSessionId)
 		registerCliCommands(api, client, cfg)
 
 		api.registerService({

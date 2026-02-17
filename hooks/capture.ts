@@ -52,7 +52,7 @@ function removeInjectedBlocks(text: string): string {
 export function createIngestionHook(
 	client: CortexClient,
 	_cfg: CortexPluginConfig,
-	getSessionKey: () => string | undefined,
+	getSessionId: () => string | undefined,
 ) {
 	return async (event: Record<string, unknown>) => {
 		if (!event.success || !Array.isArray(event.messages) || event.messages.length === 0) return
@@ -64,10 +64,10 @@ export function createIngestionHook(
 		const assistantClean = removeInjectedBlocks(turn.assistant)
 		if (userClean.length < 5 || assistantClean.length < 5) return
 
-		const sk = getSessionKey()
-		const sourceId = sk ? toSourceId(sk) : undefined
+		const sid = getSessionId()
+		const sourceId = sid ? toSourceId(sid) : undefined
 		if (!sourceId) {
-			log.debug("ingestion skipped — no session key")
+			log.debug("ingestion skipped — no session id")
 			return
 		}
 
