@@ -1,49 +1,11 @@
 import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { log } from "../log.ts"
-import { toSourceId } from "../session.ts"
+import { extractAllTurns } from "../messages.ts"
+import { toHookSourceId } from "../session.ts"
 import type { ConversationTurn } from "../types/cortex.ts"
 
-function textFromMessage(msg: Record<string, unknown>): string {
-	const content = msg.content
-	if (typeof content === "string") return content
-	if (Array.isArray(content)) {
-		return content
-			.filter(
-				(b) =>
-					b &&
-					typeof b === "object" &&
-					(b as Record<string, unknown>).type === "text",
-			)
-			.map((b) => (b as Record<string, unknown>).text as string)
-			.join("\n")
-	}
-	return ""
-}
-
-function getLatestTurn(messages: unknown[]): ConversationTurn | null {
-	let userIdx = -1
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const m = messages[i]
-		if (m && typeof m === "object" && (m as Record<string, unknown>).role === "user") {
-			userIdx = i
-			break
-		}
-	}
-	if (userIdx < 0) return null
-
-	const userText = textFromMessage(messages[userIdx] as Record<string, unknown>)
-	if (!userText) return null
-
-	for (let i = userIdx + 1; i < messages.length; i++) {
-		const m = messages[i]
-		if (m && typeof m === "object" && (m as Record<string, unknown>).role === "assistant") {
-			const aText = textFromMessage(m as Record<string, unknown>)
-			if (aText) return { user: userText, assistant: aText }
-		}
-	}
-	return null
-}
+const MAX_HOOK_TURNS = -1
 
 function removeInjectedBlocks(text: string): string {
 	return text.replace(/<cortex-context>[\s\S]*?<\/cortex-context>\s*/g, "").trim()
@@ -52,34 +14,83 @@ function removeInjectedBlocks(text: string): string {
 export function createIngestionHook(
 	client: CortexClient,
 	_cfg: CortexPluginConfig,
-	getSessionKey: () => string | undefined,
 ) {
-	return async (event: Record<string, unknown>) => {
-		if (!event.success || !Array.isArray(event.messages) || event.messages.length === 0) return
-
-		const turn = getLatestTurn(event.messages)
-		if (!turn) return
-
-		const userClean = removeInjectedBlocks(turn.user)
-		const assistantClean = removeInjectedBlocks(turn.assistant)
-		if (userClean.length < 5 || assistantClean.length < 5) return
-
-		const sk = getSessionKey()
-		const sourceId = sk ? toSourceId(sk) : undefined
-		if (!sourceId) {
-			log.debug("ingestion skipped — no session key")
-			return
-		}
-
-		log.debug(`ingesting turn (u=${userClean.length}c, a=${assistantClean.length}c) → ${sourceId}`)
-
+	return async (event: Record<string, unknown>, sessionId: string | undefined) => {
 		try {
+			log.debug(`[capture] hook fired — success=${event.success} msgs=${Array.isArray(event.messages) ? event.messages.length : "N/A"} sid=${sessionId ?? "none"}`)
+
+			if (!event.success) {
+				log.debug("[capture] skipped — event.success is falsy")
+				return
+			}
+			if (!Array.isArray(event.messages) || event.messages.length === 0) {
+				log.debug("[capture] skipped — no messages in event")
+				return
+			}
+
+			if (!sessionId) {
+				log.debug("[capture] skipped — no session id available")
+				return
+			}
+
+			const allTurns = extractAllTurns(event.messages)
+
+			if (allTurns.length === 0) {
+				log.debug(`[capture] skipped — no user-assistant turns found in ${event.messages.length} messages`)
+				const roles = event.messages
+					.slice(-5)
+					.map((m) => (m && typeof m === "object" ? (m as Record<string, unknown>).role : "?"))
+				log.debug(`[capture] last 5 message roles: ${JSON.stringify(roles)}`)
+				return
+			}
+
+			const recentTurns = MAX_HOOK_TURNS === -1 ? allTurns : allTurns.slice(-MAX_HOOK_TURNS) 
+			const turns: ConversationTurn[] = recentTurns.map((t) => ({
+				user: removeInjectedBlocks(t.user),
+				assistant: removeInjectedBlocks(t.assistant),
+			})).filter((t) => t.user.length >= 5 && t.assistant.length >= 5)
+
+			if (turns.length === 0) {
+				log.debug("[capture] skipped — all turns too short after cleaning")
+				return
+			}
+
+			const sourceId = toHookSourceId(sessionId)
+
+			const now = new Date()
+			const timestamp = now.toISOString()
+			const readableTime = now.toLocaleString("en-US", {
+				weekday: "short",
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+				hour: "2-digit",
+				minute: "2-digit",
+				timeZoneName: "short",
+			})
+
+			const annotatedTurns = turns.map((t, i) => ({
+				user: i === 0 ? `[Temporal details: ${readableTime}]\n\n${t.user}` : t.user,
+				assistant: t.assistant,
+			}))
+
+			log.debug(`[capture] ingesting ${annotatedTurns.length} turns (of ${allTurns.length} total) @ ${timestamp} -> ${sourceId}`)
+
 			await client.ingestConversation(
-				[{ user: userClean, assistant: assistantClean }],
+				annotatedTurns,
 				sourceId,
+				{
+					metadata: {
+						captured_at: timestamp,
+						source: "openclaw_hook",
+						turn_count: annotatedTurns.length,
+					},
+				},
 			)
+
+			log.debug("[capture] ingestion succeeded")
 		} catch (err) {
-			log.error("ingestion failed", err)
+			log.error("[capture] hook error", err)
 		}
 	}
 }

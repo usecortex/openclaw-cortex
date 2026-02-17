@@ -3,23 +3,32 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
 import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { log } from "../log.ts"
-import { toSourceId } from "../session.ts"
+import { extractAllTurns } from "../messages.ts"
+import { toToolSourceId } from "../session.ts"
+import type { ConversationTurn } from "../types/cortex.ts"
+
+const MAX_STORE_TURNS = 10
+
+function removeInjectedBlocks(text: string): string {
+	return text.replace(/<cortex-context>[\s\S]*?<\/cortex-context>\s*/g, "").trim()
+}
 
 export function registerStoreTool(
 	api: OpenClawPluginApi,
 	client: CortexClient,
 	_cfg: CortexPluginConfig,
-	getSessionKey: () => string | undefined,
+	getSessionId: () => string | undefined,
+	getMessages: () => unknown[],
 ): void {
 	api.registerTool(
 		{
 			name: "cortex_store",
 			label: "Cortex Store",
 			description:
-				"Save important information to Cortex long-term memory. Use this to persist facts, preferences, or decisions the user wants remembered.",
+				"Save the full conversation history to Cortex long-term memory. Use this to persist facts, preferences, or decisions the user wants remembered. The complete chat history will be sent for context-rich storage.",
 			parameters: Type.Object({
 				text: Type.String({
-					description: "The information to store in memory",
+					description: "A brief summary or note about what is being saved",
 				}),
 				title: Type.Optional(
 					Type.String({
@@ -31,10 +40,59 @@ export function registerStoreTool(
 				_toolCallId: string,
 				params: { text: string; title?: string },
 			) {
-				const sk = getSessionKey()
-				const sourceId = sk ? toSourceId(sk) : undefined
+				const sid = getSessionId()
+				const sourceId = sid ? toToolSourceId(sid) : undefined
+				const messages = getMessages()
 
-				log.debug(`store tool: "${params.text.slice(0, 50)}" - \nsourceId: ${sourceId}`)
+				log.debug(`[store] tool called — sid=${sid ?? "none"} msgs=${messages.length} text="${params.text.slice(0, 50)}"`)
+
+				const allTurns = extractAllTurns(messages)
+				const recentTurns = allTurns.slice(-MAX_STORE_TURNS)
+				const turns: ConversationTurn[] = recentTurns.map((t) => ({
+					user: removeInjectedBlocks(t.user),
+					assistant: removeInjectedBlocks(t.assistant),
+				}))
+
+				log.debug(`[store] extracted ${allTurns.length} total turns, using last ${turns.length} (MAX_STORE_TURNS=${MAX_STORE_TURNS})`)
+
+				if (turns.length > 0 && sourceId) {
+					const now = new Date()
+					const readableTime = now.toLocaleString("en-US", {
+						weekday: "short",
+						year: "numeric",
+						month: "short",
+						day: "numeric",
+						hour: "2-digit",
+						minute: "2-digit",
+						timeZoneName: "short",
+					})
+
+					const annotatedTurns = turns.map((t, i) => ({
+						user: i === 0 ? `[Temporal details: ${readableTime}]\n\n${t.user}` : t.user,
+						assistant: t.assistant,
+					}))
+
+					log.debug(`[store] ingesting ${annotatedTurns.length} conversation turns -> ${sourceId}`)
+
+					await client.ingestConversation(annotatedTurns, sourceId, {
+						metadata: {
+							captured_at: now.toISOString(),
+							source: "openclaw_tool",
+							note: params.text,
+						},
+					})
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Saved ${annotatedTurns.length} conversation turns to Cortex (${sourceId}). Note: "${params.text.length > 80 ? `${params.text.slice(0, 80)}…` : params.text}"`,
+							},
+						],
+					}
+				}
+
+				log.debug("[store] no conversation turns found, falling back to text ingestion")
 
 				await client.ingestText(params.text, {
 					sourceId,
@@ -42,16 +100,11 @@ export function registerStoreTool(
 					infer: true,
 				})
 
-				const preview =
-					params.text.length > 80
-						? `${params.text.slice(0, 80)}…`
-						: params.text
-
 				return {
 					content: [
 						{
 							type: "text" as const,
-							text: `Saved to Cortex: "${preview}"`,
+							text: `Saved to Cortex: "${params.text.length > 80 ? `${params.text.slice(0, 80)}…` : params.text}"`,
 						},
 					],
 				}
