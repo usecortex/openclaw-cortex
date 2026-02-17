@@ -6,6 +6,9 @@ import { cortexConfigSchema, parseConfig } from "./config.ts"
 import { createIngestionHook } from "./hooks/capture.ts"
 import { createRecallHook } from "./hooks/recall.ts"
 import { log } from "./log.ts"
+import { registerDeleteTool } from "./tools/delete.ts"
+import { registerGetTool } from "./tools/get.ts"
+import { registerListTool } from "./tools/list.ts"
 import { registerSearchTool } from "./tools/search.ts"
 import { registerStoreTool } from "./tools/store.ts"
 
@@ -29,6 +32,9 @@ export default {
 
 		registerSearchTool(api, client, cfg)
 		registerStoreTool(api, client, cfg, getSessionId)
+		registerListTool(api, client, cfg)
+		registerDeleteTool(api, client, cfg)
+		registerGetTool(api, client, cfg)
 
 		if (cfg.autoRecall) {
 			const onRecall = createRecallHook(client, cfg)
