@@ -1,5 +1,20 @@
 import type { ConversationTurn } from "./types/cortex.ts"
 
+export function containsIgnoreTerm(text: string, ignoreTerm: string): boolean {
+	return text.toLowerCase().includes(ignoreTerm.toLowerCase())
+}
+
+export function filterIgnoredTurns(
+	turns: ConversationTurn[],
+	ignoreTerm: string,
+): ConversationTurn[] {
+	return turns.filter(
+		(t) =>
+			!containsIgnoreTerm(t.user, ignoreTerm) &&
+			!containsIgnoreTerm(t.assistant, ignoreTerm),
+	)
+}
+
 export function textFromMessage(msg: Record<string, unknown>): string {
 	const content = msg.content
 	if (typeof content === "string") return content

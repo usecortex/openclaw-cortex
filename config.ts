@@ -7,6 +7,7 @@ export type CortexPluginConfig = {
 	maxRecallResults: number
 	recallMode: "fast" | "thinking"
 	graphContext: boolean
+	ignoreTerm: string
 	debug: boolean
 }
 
@@ -19,10 +20,12 @@ const KNOWN_KEYS = new Set([
 	"maxRecallResults",
 	"recallMode",
 	"graphContext",
+	"ignoreTerm",
 	"debug",
 ])
 
 const DEFAULT_SUB_TENANT = "cortex-openclaw-plugin"
+const DEFAULT_IGNORE_TERM = "cortex-ignore"
 
 function envOrNull(name: string): string | undefined {
 	return typeof process !== "undefined" ? process.env[name] : undefined
@@ -86,6 +89,10 @@ export function parseConfig(raw: unknown): CortexPluginConfig {
 				? ("thinking" as const)
 				: ("fast" as const),
 		graphContext: (cfg.graphContext as boolean) ?? true,
+		ignoreTerm:
+			typeof cfg.ignoreTerm === "string" && cfg.ignoreTerm.length > 0
+				? cfg.ignoreTerm
+				: DEFAULT_IGNORE_TERM,
 		debug: (cfg.debug as boolean) ?? false,
 	}
 }

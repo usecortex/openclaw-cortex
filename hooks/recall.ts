@@ -2,6 +2,7 @@ import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { buildRecalledContext, envelopeForInjection } from "../context.ts"
 import { log } from "../log.ts"
+import { containsIgnoreTerm } from "../messages.ts"
 
 export function createRecallHook(
 	client: CortexClient,
@@ -10,6 +11,11 @@ export function createRecallHook(
 	return async (event: Record<string, unknown>) => {
 		const prompt = event.prompt as string | undefined
 		if (!prompt || prompt.length < 5) return
+
+		if (containsIgnoreTerm(prompt, cfg.ignoreTerm)) {
+			log.debug(`recall skipped — prompt contains ignore term "${cfg.ignoreTerm}"`)
+			return
+		}
 
 		log.debug(`recall query (${prompt.length} chars)`)
 

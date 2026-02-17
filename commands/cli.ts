@@ -86,6 +86,7 @@ export function registerCliCommands(
 					console.log(`Recall Mode:  ${cfg.recallMode}`)
 					console.log(`Graph:        ${cfg.graphContext}`)
 					console.log(`Max Results:  ${cfg.maxRecallResults}`)
+					console.log(`Ignore Term:  ${cfg.ignoreTerm}`)
 				})
 		},
 		{ commands: ["cortex"] },
