@@ -16,7 +16,7 @@ export default {
 	id: "openclaw-cortex-ai",
 	name: "Cortex AI",
 	description:
-		"Long-term memory for OpenClaw powered by Cortex AI — auto-capture, recall, and graph-enriched context",
+		"State-of-the-art agentic memory for OpenClaw powered by Cortex AI — auto-capture, recall, and graph-enriched context",
 	kind: "memory" as const,
 	configSchema: cortexConfigSchema,
 

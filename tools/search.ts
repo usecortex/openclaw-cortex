@@ -17,7 +17,7 @@ export function registerSearchTool(
 			name: "cortex_search",
 			label: "Cortex Search",
 			description:
-				"Search through Cortex long-term memories. Returns relevant chunks with graph-enriched context.",
+				"Search through Cortex AI memories. Returns relevant chunks with graph-enriched context.",
 			parameters: Type.Object({
 				query: Type.String({ description: "Search query" }),
 				limit: Type.Optional(

@@ -25,7 +25,7 @@ export function registerStoreTool(
 			name: "cortex_store",
 			label: "Cortex Store",
 			description:
-				"Save the full conversation history to Cortex long-term memory. Use this to persist facts, preferences, or decisions the user wants remembered. The complete chat history will be sent for context-rich storage.",
+				"Save the full conversation history to Cortex AI memory. Use this to persist facts, preferences, or decisions the user wants remembered. The complete chat history will be sent for context-rich storage.",
 			parameters: Type.Object({
 				text: Type.String({
 					description: "A brief summary or note about what is being saved",
