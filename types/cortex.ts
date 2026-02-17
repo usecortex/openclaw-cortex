@@ -13,6 +13,8 @@ export type MemoryPayload = {
 	source_id?: string
 	title?: string
 	expiry_time?: number
+	document_metadata?: string
+	tenant_metadata?: string
 }
 
 export type AddMemoryRequest = {

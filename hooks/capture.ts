@@ -71,12 +71,32 @@ export function createIngestionHook(
 			return
 		}
 
-		log.debug(`ingesting turn (u=${userClean.length}c, a=${assistantClean.length}c) → ${sourceId}`)
+		const now = new Date()
+		const timestamp = now.toISOString()
+		const readableTime = now.toLocaleString("en-US", {
+			weekday: "short",
+			year: "numeric",
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+			timeZoneName: "short",
+		})
+
+		const timedUser = `[Temporal details: ${readableTime}]\n\n${userClean}`
+
+		log.debug(`ingesting turn @ ${timestamp} (u=${userClean.length}c, a=${assistantClean.length}c) -> ${sourceId}`)
 
 		try {
 			await client.ingestConversation(
-				[{ user: userClean, assistant: assistantClean }],
+				[{ user: timedUser, assistant: assistantClean }],
 				sourceId,
+				{
+					metadata: {
+						captured_at: timestamp,
+						source: "openclaw",
+					},
+				},
 			)
 		} catch (err) {
 			log.error("ingestion failed", err)

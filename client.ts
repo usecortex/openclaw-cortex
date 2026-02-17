@@ -76,7 +76,10 @@ export class CortexClient {
 	async ingestConversation(
 		turns: ConversationTurn[],
 		sourceId: string,
-		userName?: string,
+		opts?: {
+			userName?: string
+			metadata?: Record<string, unknown>
+		},
 	): Promise<AddMemoryResponse> {
 		const payload: AddMemoryRequest = {
 			memories: [
@@ -84,8 +87,11 @@ export class CortexClient {
 					user_assistant_pairs: turns,
 					infer: true,
 					source_id: sourceId,
-					user_name: userName ?? "User",
+					user_name: opts?.userName ?? "User",
 					custom_instructions: INGEST_INSTRUCTIONS,
+					...(opts?.metadata && {
+						document_metadata: JSON.stringify(opts.metadata),
+					}),
 				},
 			],
 			tenant_id: this.tenantId,
