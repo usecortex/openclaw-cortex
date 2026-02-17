@@ -1,8 +1,11 @@
 import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { log } from "../log.ts"
-import { getLatestTurn } from "../messages.ts"
+import { extractAllTurns } from "../messages.ts"
 import { toHookSourceId } from "../session.ts"
+import type { ConversationTurn } from "../types/cortex.ts"
+
+const MAX_HOOK_TURNS = -1
 
 function removeInjectedBlocks(text: string): string {
 	return text.replace(/<cortex-context>[\s\S]*?<\/cortex-context>\s*/g, "").trim()
@@ -25,9 +28,15 @@ export function createIngestionHook(
 				return
 			}
 
-			const turn = getLatestTurn(event.messages)
-			if (!turn) {
-				log.debug(`[capture] skipped — could not extract user-assistant turn from ${event.messages.length} messages`)
+			if (!sessionId) {
+				log.debug("[capture] skipped — no session id available")
+				return
+			}
+
+			const allTurns = extractAllTurns(event.messages)
+
+			if (allTurns.length === 0) {
+				log.debug(`[capture] skipped — no user-assistant turns found in ${event.messages.length} messages`)
 				const roles = event.messages
 					.slice(-5)
 					.map((m) => (m && typeof m === "object" ? (m as Record<string, unknown>).role : "?"))
@@ -35,16 +44,14 @@ export function createIngestionHook(
 				return
 			}
 
-			const userClean = removeInjectedBlocks(turn.user)
-			const assistantClean = removeInjectedBlocks(turn.assistant)
+			const recentTurns = MAX_HOOK_TURNS === -1 ? allTurns : allTurns.slice(-MAX_HOOK_TURNS) 
+			const turns: ConversationTurn[] = recentTurns.map((t) => ({
+				user: removeInjectedBlocks(t.user),
+				assistant: removeInjectedBlocks(t.assistant),
+			})).filter((t) => t.user.length >= 5 && t.assistant.length >= 5)
 
-			if (userClean.length < 5 || assistantClean.length < 5) {
-				log.debug(`[capture] skipped — text too short (u=${userClean.length}c, a=${assistantClean.length}c)`)
-				return
-			}
-
-			if (!sessionId) {
-				log.debug("[capture] skipped — no session id available")
+			if (turns.length === 0) {
+				log.debug("[capture] skipped — all turns too short after cleaning")
 				return
 			}
 
@@ -62,17 +69,21 @@ export function createIngestionHook(
 				timeZoneName: "short",
 			})
 
-			const timedUser = `[Temporal details: ${readableTime}]\n\n${userClean}`
+			const annotatedTurns = turns.map((t, i) => ({
+				user: i === 0 ? `[Temporal details: ${readableTime}]\n\n${t.user}` : t.user,
+				assistant: t.assistant,
+			}))
 
-			log.debug(`[capture] ingesting turn @ ${timestamp} (u=${userClean.length}c, a=${assistantClean.length}c) -> ${sourceId}`)
+			log.debug(`[capture] ingesting ${annotatedTurns.length} turns (of ${allTurns.length} total) @ ${timestamp} -> ${sourceId}`)
 
 			await client.ingestConversation(
-				[{ user: timedUser, assistant: assistantClean }],
+				annotatedTurns,
 				sourceId,
 				{
 					metadata: {
 						captured_at: timestamp,
 						source: "openclaw_hook",
+						turn_count: annotatedTurns.length,
 					},
 				},
 			)

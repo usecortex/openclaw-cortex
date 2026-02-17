@@ -57,7 +57,8 @@ export default {
 				"agent_end",
 				(event: Record<string, unknown>, ctx: Record<string, unknown>) => {
 					if (ctx.sessionId) activeSessionId = ctx.sessionId as string
-					log.debug(`[session] agent_end — sid=${activeSessionId ?? "none"} ctxKeys=${Object.keys(ctx).join(",")}`)
+					if (Array.isArray(event.messages)) conversationMessages = event.messages
+					log.debug(`[session] agent_end — sid=${activeSessionId ?? "none"} msgs=${conversationMessages.length} ctxKeys=${Object.keys(ctx).join(",")}`)
 					return captureHandler(event, activeSessionId)
 				},
 			)

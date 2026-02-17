@@ -20,35 +20,31 @@ export function textFromMessage(msg: Record<string, unknown>): string {
 
 export function extractAllTurns(messages: unknown[]): ConversationTurn[] {
 	const turns: ConversationTurn[] = []
-	let i = 0
-	while (i < messages.length) {
-		const msg = messages[i]
-		if (!msg || typeof msg !== "object") {
-			i++
-			continue
-		}
+	let currentUserText: string | null = null
+	let currentAssistantText: string | null = null
+
+	for (const msg of messages) {
+		if (!msg || typeof msg !== "object") continue
 		const m = msg as Record<string, unknown>
+		const text = textFromMessage(m)
+
 		if (m.role === "user") {
-			const userText = textFromMessage(m)
-			if (userText) {
-				for (let j = i + 1; j < messages.length; j++) {
-					const next = messages[j]
-					if (!next || typeof next !== "object") continue
-					const n = next as Record<string, unknown>
-					if (n.role === "assistant") {
-						const assistantText = textFromMessage(n)
-						if (assistantText) {
-							turns.push({ user: userText, assistant: assistantText })
-							i = j + 1
-							break
-						}
-					}
-					if (n.role === "user") break
-				}
+			if (!text) continue
+			if (currentUserText && currentAssistantText) {
+				turns.push({ user: currentUserText, assistant: currentAssistantText })
 			}
+			currentUserText = text
+			currentAssistantText = "no-message"
+		} else if (m.role === "assistant") {
+			if (!text) continue
+			currentAssistantText = text
 		}
-		i++
 	}
+
+	if (currentUserText && currentAssistantText) {
+		turns.push({ user: currentUserText, assistant: currentAssistantText })
+	}
+
 	return turns
 }
 

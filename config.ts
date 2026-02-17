@@ -22,7 +22,7 @@ const KNOWN_KEYS = new Set([
 	"debug",
 ])
 
-const DEFAULT_SUB_TENANT = "cortex-openclaw"
+const DEFAULT_SUB_TENANT = "cortex-openclaw-plugin"
 
 function envOrNull(name: string): string | undefined {
 	return typeof process !== "undefined" ? process.env[name] : undefined
