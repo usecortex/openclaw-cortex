@@ -23,7 +23,7 @@ export default {
 	register(api: OpenClawPluginApi) {
 		const cfg = parseConfig(api.pluginConfig)
 
-		log.setDebug(cfg.debug)
+		log.init(api.logger, cfg.debug)
 
 		const client = new CortexClient(cfg.apiKey, cfg.tenantId, cfg.subTenantId)
 

@@ -7,6 +7,8 @@ import { extractAllTurns } from "../messages.ts"
 import { toToolSourceId } from "../session.ts"
 import type { ConversationTurn } from "../types/cortex.ts"
 
+const MAX_STORE_TURNS = 10
+
 function removeInjectedBlocks(text: string): string {
 	return text.replace(/<cortex-context>[\s\S]*?<\/cortex-context>\s*/g, "").trim()
 }
@@ -44,10 +46,14 @@ export function registerStoreTool(
 
 				log.debug(`[store] tool called — sid=${sid ?? "none"} msgs=${messages.length} text="${params.text.slice(0, 50)}"`)
 
-				const turns: ConversationTurn[] = extractAllTurns(messages).map((t) => ({
+				const allTurns = extractAllTurns(messages)
+				const recentTurns = allTurns.slice(-MAX_STORE_TURNS)
+				const turns: ConversationTurn[] = recentTurns.map((t) => ({
 					user: removeInjectedBlocks(t.user),
 					assistant: removeInjectedBlocks(t.assistant),
 				}))
+
+				log.debug(`[store] extracted ${allTurns.length} total turns, using last ${turns.length} (MAX_STORE_TURNS=${MAX_STORE_TURNS})`)
 
 				if (turns.length > 0 && sourceId) {
 					const now = new Date()
