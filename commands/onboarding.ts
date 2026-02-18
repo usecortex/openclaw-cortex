@@ -1,8 +1,23 @@
+import * as fs from "node:fs"
+import * as path from "node:path"
 import * as readline from "node:readline"
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
 import type { CortexClient } from "../client.ts"
 import type { CortexPluginConfig } from "../config.ts"
 import { log } from "../log.ts"
+
+// ── Defaults (used when config is not yet available) ──
+
+const DEFAULTS = {
+	subTenantId: "cortex-openclaw-plugin",
+	ignoreTerm: "cortex-ignore",
+	autoRecall: true,
+	autoCapture: true,
+	maxRecallResults: 10,
+	recallMode: "fast" as const,
+	graphContext: true,
+	debug: false,
+}
 
 // ── ANSI helpers ──
 
@@ -160,57 +175,71 @@ type WizardResult = {
 	debug?: boolean
 }
 
-function buildConfigJson(result: WizardResult): string {
+function buildConfigObj(result: WizardResult): Record<string, unknown> {
 	const obj: Record<string, unknown> = {}
 
-	if (result.apiKey && !result.apiKey.startsWith("$")) {
-		obj.apiKey = result.apiKey
-	}
-	if (result.tenantId && !result.tenantId.startsWith("$")) {
-		obj.tenantId = result.tenantId
-	}
-	if (result.subTenantId !== "cortex-openclaw-plugin") {
+	obj.apiKey = result.apiKey
+	obj.tenantId = result.tenantId
+
+	if (result.subTenantId !== DEFAULTS.subTenantId) {
 		obj.subTenantId = result.subTenantId
 	}
-	if (result.ignoreTerm !== "cortex-ignore") {
+	if (result.ignoreTerm !== DEFAULTS.ignoreTerm) {
 		obj.ignoreTerm = result.ignoreTerm
 	}
-	if (result.autoRecall !== undefined && result.autoRecall !== true) {
+	if (result.autoRecall !== undefined && result.autoRecall !== DEFAULTS.autoRecall) {
 		obj.autoRecall = result.autoRecall
 	}
-	if (result.autoCapture !== undefined && result.autoCapture !== true) {
+	if (result.autoCapture !== undefined && result.autoCapture !== DEFAULTS.autoCapture) {
 		obj.autoCapture = result.autoCapture
 	}
-	if (result.maxRecallResults !== undefined && result.maxRecallResults !== 10) {
+	if (result.maxRecallResults !== undefined && result.maxRecallResults !== DEFAULTS.maxRecallResults) {
 		obj.maxRecallResults = result.maxRecallResults
 	}
-	if (result.recallMode !== undefined && result.recallMode !== "fast") {
+	if (result.recallMode !== undefined && result.recallMode !== DEFAULTS.recallMode) {
 		obj.recallMode = result.recallMode
 	}
-	if (result.graphContext !== undefined && result.graphContext !== true) {
+	if (result.graphContext !== undefined && result.graphContext !== DEFAULTS.graphContext) {
 		obj.graphContext = result.graphContext
 	}
-	if (result.debug !== undefined && result.debug !== false) {
+	if (result.debug !== undefined && result.debug !== DEFAULTS.debug) {
 		obj.debug = result.debug
 	}
 
-	return JSON.stringify(obj, null, 2)
+	return obj
 }
 
-function buildEnvLines(result: WizardResult): string[] {
-	const lines: string[] = []
-	if (result.apiKey && !result.apiKey.startsWith("$")) {
-		lines.push(`CORTEX_OPENCLAW_API_KEY=${result.apiKey}`)
+// ── Persist to ~/.openclaw/openclaw.json ──
+
+const OPENCLAW_CONFIG_PATH = path.join(
+	process.env.HOME ?? process.env.USERPROFILE ?? "~",
+	".openclaw",
+	"openclaw.json",
+)
+
+function persistConfig(configObj: Record<string, unknown>): boolean {
+	try {
+		const raw = fs.readFileSync(OPENCLAW_CONFIG_PATH, "utf-8")
+		const root = JSON.parse(raw)
+
+		if (!root.plugins) root.plugins = {}
+		if (!root.plugins.entries) root.plugins.entries = {}
+		if (!root.plugins.entries["openclaw-cortex-ai"]) {
+			root.plugins.entries["openclaw-cortex-ai"] = { enabled: true }
+		}
+
+		root.plugins.entries["openclaw-cortex-ai"].config = configObj
+
+		fs.writeFileSync(OPENCLAW_CONFIG_PATH, JSON.stringify(root, null, 2) + "\n")
+		return true
+	} catch {
+		return false
 	}
-	if (result.tenantId && !result.tenantId.startsWith("$")) {
-		lines.push(`CORTEX_OPENCLAW_TENANT_ID=${result.tenantId}`)
-	}
-	return lines
 }
 
 // ── Wizards ──
 
-async function runBasicWizard(cfg: CortexPluginConfig): Promise<void> {
+async function runBasicWizard(cfg?: CortexPluginConfig): Promise<void> {
 	const rl = createRl()
 
 	try {
@@ -232,14 +261,15 @@ async function runBasicWizard(cfg: CortexPluginConfig): Promise<void> {
 		printSection("Customisation")
 
 		const subTenantId = await promptText(rl, "Sub-Tenant ID", {
-			default: cfg.subTenantId,
+			default: cfg?.subTenantId ?? DEFAULTS.subTenantId,
 		})
 
 		const ignoreTerm = await promptText(rl, "Ignore Term", {
-			default: cfg.ignoreTerm,
+			default: cfg?.ignoreTerm ?? DEFAULTS.ignoreTerm,
 		})
 
 		const result: WizardResult = { apiKey, tenantId, subTenantId, ignoreTerm }
+		const configObj = buildConfigObj(result)
 
 		// ── Summary ──
 
@@ -252,35 +282,35 @@ async function runBasicWizard(cfg: CortexPluginConfig): Promise<void> {
 		printSummaryRow("Ignore Term", ignoreTerm)
 		console.log(`  ${c.dim}└${"─".repeat(50)}${c.reset}`)
 
-		// ── Output config ──
+		// ── Persist config ──
 
-		const envLines = buildEnvLines(result)
-		if (envLines.length > 0) {
+		const saved = await promptBool(rl, `Write config to ${OPENCLAW_CONFIG_PATH}?`, true)
+
+		if (saved && persistConfig(configObj)) {
+			printSuccess("Config saved! Restart the gateway (`openclaw gateway restart`) to apply.")
+		} else if (saved) {
+			console.log(`  ${c.red}Failed to write config. Add manually:${c.reset}`)
 			console.log()
-			console.log(`  ${c.yellow}${c.bold}Add to your .env file:${c.reset}`)
-			console.log()
-			for (const line of envLines) {
-				console.log(`    ${c.green}${line}${c.reset}`)
+			for (const line of JSON.stringify(configObj, null, 2).split("\n")) {
+				console.log(`    ${c.cyan}${line}${c.reset}`)
 			}
-		}
-
-		const json = buildConfigJson(result)
-		if (json !== "{}") {
+		} else {
 			console.log()
-			console.log(`  ${c.yellow}${c.bold}Plugin config (openclaw.plugin.json / settings):${c.reset}`)
+			console.log(`  ${c.yellow}${c.bold}Add to openclaw.json plugins.entries.openclaw-cortex-ai.config:${c.reset}`)
 			console.log()
-			for (const line of json.split("\n")) {
+			for (const line of JSON.stringify(configObj, null, 2).split("\n")) {
 				console.log(`    ${c.cyan}${line}${c.reset}`)
 			}
 		}
 
-		printSuccess("Onboarding complete! Run `cortex onboard --advanced` to fine-tune all options.")
+		console.log()
+		console.log(`  ${c.dim}Run \`cortex onboard --advanced\` to fine-tune all options.${c.reset}`)
 	} finally {
 		rl.close()
 	}
 }
 
-async function runAdvancedWizard(cfg: CortexPluginConfig): Promise<void> {
+async function runAdvancedWizard(cfg?: CortexPluginConfig): Promise<void> {
 	const rl = createRl()
 
 	try {
@@ -300,30 +330,30 @@ async function runAdvancedWizard(cfg: CortexPluginConfig): Promise<void> {
 		})
 
 		const subTenantId = await promptText(rl, "Sub-Tenant ID", {
-			default: cfg.subTenantId,
+			default: cfg?.subTenantId ?? DEFAULTS.subTenantId,
 		})
 
 		printSection("Behaviour")
 
-		const autoRecall = await promptBool(rl, "Enable Auto-Recall?", cfg.autoRecall)
-		const autoCapture = await promptBool(rl, "Enable Auto-Capture?", cfg.autoCapture)
+		const autoRecall = await promptBool(rl, "Enable Auto-Recall?", cfg?.autoRecall ?? DEFAULTS.autoRecall)
+		const autoCapture = await promptBool(rl, "Enable Auto-Capture?", cfg?.autoCapture ?? DEFAULTS.autoCapture)
 		const ignoreTerm = await promptText(rl, "Ignore Term", {
-			default: cfg.ignoreTerm,
+			default: cfg?.ignoreTerm ?? DEFAULTS.ignoreTerm,
 		})
 
 		printSection("Recall Settings")
 
 		const maxRecallResults = await promptNumber(
-			rl, "Max Recall Results", cfg.maxRecallResults, 1, 50,
+			rl, "Max Recall Results", cfg?.maxRecallResults ?? DEFAULTS.maxRecallResults, 1, 50,
 		)
 		const recallMode = await promptChoice(
-			rl, "Recall Mode", ["fast", "thinking"], cfg.recallMode,
+			rl, "Recall Mode", ["fast", "thinking"], cfg?.recallMode ?? DEFAULTS.recallMode,
 		) as "fast" | "thinking"
-		const graphContext = await promptBool(rl, "Enable Graph Context?", cfg.graphContext)
+		const graphContext = await promptBool(rl, "Enable Graph Context?", cfg?.graphContext ?? DEFAULTS.graphContext)
 
 		printSection("Debug")
 
-		const debug = await promptBool(rl, "Enable Debug Logging?", cfg.debug)
+		const debug = await promptBool(rl, "Enable Debug Logging?", cfg?.debug ?? DEFAULTS.debug)
 
 		const result: WizardResult = {
 			apiKey,
@@ -355,29 +385,27 @@ async function runAdvancedWizard(cfg: CortexPluginConfig): Promise<void> {
 		printSummaryRow("Debug", String(debug))
 		console.log(`  ${c.dim}└${"─".repeat(50)}${c.reset}`)
 
-		// ── Output config ──
+		// ── Persist config ──
 
-		const envLines = buildEnvLines(result)
-		if (envLines.length > 0) {
+		const configObj = buildConfigObj(result)
+		const saved = await promptBool(rl, `Write config to ${OPENCLAW_CONFIG_PATH}?`, true)
+
+		if (saved && persistConfig(configObj)) {
+			printSuccess("Config saved! Restart the gateway (`openclaw gateway restart`) to apply.")
+		} else if (saved) {
+			console.log(`  ${c.red}Failed to write config. Add manually:${c.reset}`)
 			console.log()
-			console.log(`  ${c.yellow}${c.bold}Add to your .env file:${c.reset}`)
-			console.log()
-			for (const line of envLines) {
-				console.log(`    ${c.green}${line}${c.reset}`)
+			for (const line of JSON.stringify(configObj, null, 2).split("\n")) {
+				console.log(`    ${c.cyan}${line}${c.reset}`)
 			}
-		}
-
-		const json = buildConfigJson(result)
-		if (json !== "{}") {
+		} else {
 			console.log()
-			console.log(`  ${c.yellow}${c.bold}Plugin config (openclaw.plugin.json / settings):${c.reset}`)
+			console.log(`  ${c.yellow}${c.bold}Add to openclaw.json plugins.entries.openclaw-cortex-ai.config:${c.reset}`)
 			console.log()
-			for (const line of json.split("\n")) {
+			for (const line of JSON.stringify(configObj, null, 2).split("\n")) {
 				console.log(`    ${c.cyan}${line}${c.reset}`)
 			}
 		}
-
-		printSuccess("Onboarding complete! All options configured.")
 	} finally {
 		rl.close()
 	}
@@ -386,7 +414,7 @@ async function runAdvancedWizard(cfg: CortexPluginConfig): Promise<void> {
 // ── Registration (CLI + Slash) ──
 
 export function registerOnboardingCli(
-	cfg: CortexPluginConfig,
+	cfg?: CortexPluginConfig,
 ): (root: any) => void {
 	return (root: any) => {
 		root
