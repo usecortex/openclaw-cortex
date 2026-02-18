@@ -1,4 +1,5 @@
 import * as fs from "node:fs"
+import * as os from "node:os"
 import * as path from "node:path"
 import * as readline from "node:readline"
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
@@ -209,13 +210,27 @@ function buildConfigObj(result: WizardResult): Record<string, unknown> {
 	return obj
 }
 
-// ── Persist to ~/.openclaw/openclaw.json ──
+// ── Persist to openclaw.json ──
+// Mirrors openclaw's own path resolution (src/config/paths.ts):
+//   1. $OPENCLAW_CONFIG_PATH  (explicit override)
+//   2. $OPENCLAW_STATE_DIR/openclaw.json
+//   3. $OPENCLAW_HOME/.openclaw/openclaw.json
+//   4. os.homedir()/.openclaw/openclaw.json  (default)
 
-const OPENCLAW_CONFIG_PATH = path.join(
-	process.env.HOME ?? process.env.USERPROFILE ?? "~",
-	".openclaw",
-	"openclaw.json",
-)
+function resolveOpenClawConfigPath(): string {
+	if (process.env.OPENCLAW_CONFIG_PATH) {
+		return process.env.OPENCLAW_CONFIG_PATH
+	}
+	if (process.env.OPENCLAW_STATE_DIR) {
+		return path.join(process.env.OPENCLAW_STATE_DIR, "openclaw.json")
+	}
+	if (process.env.OPENCLAW_HOME) {
+		return path.join(process.env.OPENCLAW_HOME, ".openclaw", "openclaw.json")
+	}
+	return path.join(os.homedir(), ".openclaw", "openclaw.json")
+}
+
+const OPENCLAW_CONFIG_PATH = resolveOpenClawConfigPath()
 
 function persistConfig(configObj: Record<string, unknown>): boolean {
 	try {
