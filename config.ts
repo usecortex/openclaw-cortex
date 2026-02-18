@@ -97,6 +97,32 @@ export function parseConfig(raw: unknown): CortexPluginConfig {
 	}
 }
 
+export function tryParseConfig(raw: unknown): CortexPluginConfig | null {
+	try {
+		return parseConfig(raw)
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Permissive schema parse — validates key names but does NOT require credentials.
+ * This lets the plugin load so the onboarding wizard can run.
+ */
+function parseConfigSoft(raw: unknown): Record<string, unknown> {
+	const cfg =
+		raw && typeof raw === "object" && !Array.isArray(raw)
+			? (raw as Record<string, unknown>)
+			: {}
+
+	const unknown = Object.keys(cfg).filter((k) => !KNOWN_KEYS.has(k))
+	if (unknown.length > 0) {
+		throw new Error(`cortex-ai: unrecognized config keys: ${unknown.join(", ")}`)
+	}
+
+	return cfg
+}
+
 export const cortexConfigSchema = {
-	parse: parseConfig,
+	parse: parseConfigSoft,
 }

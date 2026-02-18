@@ -1,9 +1,9 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk"
 import { CortexClient } from "./client.ts"
-import { registerCliCommands } from "./commands/cli.ts"
-import { registerOnboardingCli, registerOnboardingSlashCommands } from "./commands/onboarding.ts"
+import type { CortexPluginConfig } from "./config.ts"
+import { registerOnboardingCli as createOnboardingCliRegistrar, registerOnboardingSlashCommands } from "./commands/onboarding.ts"
 import { registerSlashCommands } from "./commands/slash.ts"
-import { cortexConfigSchema, parseConfig } from "./config.ts"
+import { cortexConfigSchema, tryParseConfig } from "./config.ts"
 import { createIngestionHook } from "./hooks/capture.ts"
 import { createRecallHook } from "./hooks/recall.ts"
 import { log } from "./log.ts"
@@ -12,6 +12,9 @@ import { registerGetTool } from "./tools/get.ts"
 import { registerListTool } from "./tools/list.ts"
 import { registerSearchTool } from "./tools/search.ts"
 import { registerStoreTool } from "./tools/store.ts"
+
+const NOT_CONFIGURED_MSG =
+	"[cortex-ai] Not configured. Run `openclaw cortex onboard` to set up credentials."
 
 export default {
 	id: "openclaw-cortex-ai",
@@ -22,8 +25,33 @@ export default {
 	configSchema: cortexConfigSchema,
 
 	register(api: OpenClawPluginApi) {
-		const cfg = parseConfig(api.pluginConfig)
+		const cfg = tryParseConfig(api.pluginConfig)
+		const cliClient = cfg ? new CortexClient(cfg.apiKey, cfg.tenantId, cfg.subTenantId) : null
 
+		// Always register ALL CLI commands so they appear in help text.
+		// Non-onboard commands guard on credentials at runtime.
+		api.registerCli(
+			({ program }: { program: any }) => {
+				const root = program
+					.command("cortex")
+					.description("Cortex AI memory commands")
+
+				createOnboardingCliRegistrar(cfg ?? undefined)(root)
+				registerCortexCliCommands(root, cliClient, cfg)
+			},
+			{ commands: ["cortex"] },
+		)
+
+		if (!cfg) {
+			api.registerService({
+				id: "openclaw-cortex-ai",
+				start: () => console.log(NOT_CONFIGURED_MSG),
+				stop: () => {},
+			})
+			return
+		}
+
+		// Full plugin registration — credentials present
 		log.init(api.logger, cfg.debug)
 
 		const client = new CortexClient(cfg.apiKey, cfg.tenantId, cfg.subTenantId)
@@ -67,7 +95,6 @@ export default {
 
 		registerSlashCommands(api, client, cfg, getSessionId)
 		registerOnboardingSlashCommands(api, client, cfg)
-		registerCliCommands(api, client, cfg, registerOnboardingCli(cfg))
 
 		api.registerService({
 			id: "openclaw-cortex-ai",
@@ -75,4 +102,111 @@ export default {
 			stop: () => log.info("plugin stopped"),
 		})
 	},
+}
+
+/**
+ * Register all `cortex *` CLI subcommands.
+ * Commands other than `onboard` guard on valid credentials at runtime.
+ */
+function registerCortexCliCommands(
+	root: any,
+	client: CortexClient | null,
+	cfg: CortexPluginConfig | null,
+): void {
+	const requireCreds = (): { client: CortexClient; cfg: CortexPluginConfig } | null => {
+		if (client && cfg) return { client, cfg }
+		console.error(NOT_CONFIGURED_MSG)
+		return null
+	}
+
+	root
+		.command("search")
+		.argument("<query>", "Search query")
+		.option("--limit <n>", "Max results", "10")
+		.action(async (query: string, opts: { limit: string }) => {
+			const ctx = requireCreds()
+			if (!ctx) return
+
+			const limit = Number.parseInt(opts.limit, 10) || 10
+			const res = await ctx.client.recall(query, {
+				maxResults: limit,
+				mode: ctx.cfg.recallMode,
+				graphContext: ctx.cfg.graphContext,
+			})
+
+			if (!res.chunks || res.chunks.length === 0) {
+				console.log("No memories found.")
+				return
+			}
+
+			for (const chunk of res.chunks) {
+				const score = chunk.relevancy_score != null
+					? ` (${(chunk.relevancy_score * 100).toFixed(0)}%)`
+					: ""
+				const title = chunk.source_title ? `[${chunk.source_title}] ` : ""
+				console.log(`- ${title}${chunk.chunk_content.slice(0, 200)}${score}`)
+			}
+		})
+
+	root
+		.command("list")
+		.description("List all user memories")
+		.action(async () => {
+			const ctx = requireCreds()
+			if (!ctx) return
+
+			const res = await ctx.client.listMemories()
+			const memories = res.user_memories ?? []
+			if (memories.length === 0) {
+				console.log("No memories stored.")
+				return
+			}
+			for (const m of memories) {
+				console.log(`[${m.memory_id}] ${m.memory_content.slice(0, 150)}`)
+			}
+			console.log(`\nTotal: ${memories.length}`)
+		})
+
+	root
+		.command("delete")
+		.argument("<memory_id>", "Memory ID to delete")
+		.action(async (memoryId: string) => {
+			const ctx = requireCreds()
+			if (!ctx) return
+
+			const res = await ctx.client.deleteMemory(memoryId)
+			console.log(res.user_memory_deleted ? `Deleted: ${memoryId}` : `Not found: ${memoryId}`)
+		})
+
+	root
+		.command("get")
+		.argument("<source_id>", "Source ID to fetch")
+		.action(async (sourceId: string) => {
+			const ctx = requireCreds()
+			if (!ctx) return
+
+			const res = await ctx.client.fetchContent(sourceId)
+			if (!res.success || res.error) {
+				console.error(`Error: ${res.error ?? "unknown"}`)
+				return
+			}
+			console.log(res.content ?? res.content_base64 ?? "(no text content)")
+		})
+
+	root
+		.command("status")
+		.description("Show plugin configuration")
+		.action(() => {
+			const ctx = requireCreds()
+			if (!ctx) return
+
+			console.log(`Tenant:       ${ctx.client.getTenantId()}`)
+			console.log(`Sub-Tenant:   ${ctx.client.getSubTenantId()}`)
+			console.log(`Auto-Recall:  ${ctx.cfg.autoRecall}`)
+			console.log(`Auto-Capture: ${ctx.cfg.autoCapture}`)
+			console.log(`Recall Mode:  ${ctx.cfg.recallMode}`)
+			console.log(`Graph:        ${ctx.cfg.graphContext}`)
+			console.log(`Max Results:  ${ctx.cfg.maxRecallResults}`)
+			console.log(`Ignore Term:  ${ctx.cfg.ignoreTerm}`)
+		})
 }
