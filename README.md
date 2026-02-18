@@ -28,9 +28,16 @@ openclaw cortex onboard
 openclaw cortex onboard --advanced
 ```
 
-The wizard guides you through configuration with colored prompts and **writes your config to**:
+The wizard guides you through configuration with colored prompts and **writes your config to** `plugins.entries.openclaw-cortex-ai.config` inside OpenClaw's settings file.
 
-`~/.openclaw/openclaw.json` → `plugins.entries.openclaw-cortex-ai.config`
+The path is resolved in the same order OpenClaw itself uses:
+
+1. `$OPENCLAW_CONFIG_PATH` — if set, used directly
+2. `$OPENCLAW_STATE_DIR/openclaw.json` — if `OPENCLAW_STATE_DIR` is set
+3. `$OPENCLAW_HOME/.openclaw/openclaw.json` — if `OPENCLAW_HOME` is set
+4. Default: `~/.openclaw/openclaw.json` (macOS/Linux) or `%USERPROFILE%\.openclaw\openclaw.json` (Windows)
+
+No manual adjustment needed — the wizard auto-detects the correct path.
 
 After onboarding, restart the gateway:
 
@@ -54,7 +61,10 @@ export CORTEX_OPENCLAW_API_KEY="your-api-key"
 export CORTEX_OPENCLAW_TENANT_ID="your-tenant-id"
 ```
 
-Or configure directly in OpenClaw’s settings file (`~/.openclaw/openclaw.json`):
+Or configure directly in OpenClaw's settings file:
+
+- **macOS / Linux:** `~/.openclaw/openclaw.json`
+- **Windows:** `%USERPROFILE%\.openclaw\openclaw.json`
 
 ```json5
 {
